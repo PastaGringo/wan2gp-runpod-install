@@ -28,6 +28,16 @@ import os
 import sys
 import time
 
+# On Windows the default console encoding (cp1252) can't print Unicode arrows
+# like → that we use in status messages. Force UTF-8 on stdout/stderr so the
+# script runs cleanly regardless of $env:PYTHONUTF8.
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import runpod
 
 # Friendly GPU name → RunPod GPU type ID
@@ -73,26 +83,26 @@ def auth() -> None:
 
 
 def build_docker_args(stack: str) -> str:
-    """Build the auto-install docker_args chain for the given stack."""
+    """Build the auto-install docker_args chain for the given stack.
+
+    Single-line bash -c chain to avoid newlines, apostrophes, or any character
+    that breaks GraphQL serialization on RunPod's side.
+    """
     s = STACKS[stack]
-    return f"""bash -c '
-# Run RunPod's default entrypoint (Jupyter, SSH) in background
-/start.sh > /workspace/runpod-start.log 2>&1 &
-
-# Wait a few seconds for /workspace to be mounted
-sleep 5
-
-# Run the installer
-{{
-  echo "=== Auto-install ({stack}) started at $(date) ==="
-  curl -fsSL {s["install_url"]} | bash
-}} > /workspace/{stack}-install.log 2>&1
-
-# Launch the UI
-cd {s["launch_dir"]} && source venv/bin/activate
-echo "=== Launching {stack} at $(date) ===" >> /workspace/{stack}-run.log
-exec {s["launch_cmd"]} >> /workspace/{stack}-run.log 2>&1
-'"""
+    install_url = s["install_url"]
+    launch_dir = s["launch_dir"]
+    launch_cmd = s["launch_cmd"]
+    # No apostrophes anywhere in the chain. Single-quote-safe.
+    chain = (
+        f"/start.sh > /workspace/runpod-start.log 2>&1 & "
+        f"sleep 5 && "
+        f"(echo === Auto-install {stack} started === && "
+        f"curl -fsSL {install_url} | bash) > /workspace/{stack}-install.log 2>&1 && "
+        f"cd {launch_dir} && source venv/bin/activate && "
+        f"echo === Launching {stack} === >> /workspace/{stack}-run.log && "
+        f"exec {launch_cmd} >> /workspace/{stack}-run.log 2>&1"
+    )
+    return f"bash -c '{chain}'"
 
 
 def deploy(args: argparse.Namespace) -> None:
