@@ -12,11 +12,36 @@
 
 set -euo pipefail
 
+# ── Discord notification helper (silent on failure) ──
+notify() {
+  local step="$1"
+  local total="${2:-8}"
+  local label="$3"
+  echo ""
+  echo "▶ [${step}/${total}] ${label}"
+  if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
+    local pod="${RUNPOD_POD_ID:-?}"
+    local payload
+    payload=$(python3 -c "
+import json
+print(json.dumps({
+  'username': 'Wan2GP installer',
+  'content': f'\`${pod}\` [${step}/${total}] ${label}'
+}))" 2>/dev/null || echo "{\"content\":\"[${step}/${total}] ${label}\"}")
+    curl -fsS -X POST "$DISCORD_WEBHOOK_URL" \
+      -H "Content-Type: application/json" \
+      --data "$payload" \
+      > /dev/null 2>&1 || true
+  fi
+}
+
 echo "=============================================="
 echo " Wan2GP RunPod installer"
 echo "=============================================="
+notify 0 8 "Starting install"
 
 # ── [0] Sanity check ────────────────────────────────────────────────
+notify 1 8 "System check"
 echo ""
 echo "── [0] System check ──"
 nvidia-smi --query-gpu=name,compute_cap,memory.total,driver_version --format=csv
@@ -28,6 +53,7 @@ SM=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d 
 echo "Compute capability: $SM"
 
 # ── [1] Clone Wan2GP ────────────────────────────────────────────────
+notify 2 8 "Cloning Wan2GP"
 echo ""
 echo "── [1] Clone Wan2GP ──"
 cd /workspace
@@ -40,6 +66,7 @@ fi
 cd /workspace/Wan2GP
 
 # ── [2] Create venv (system python3.11) ─────────────────────────────
+notify 3 8 "Creating Python 3.11 venv"
 echo ""
 echo "── [2] Create venv (Python 3.11) ──"
 if [ ! -d venv ]; then
@@ -51,22 +78,26 @@ python -m pip install --upgrade pip wheel
 
 # ── [3] PyTorch 2.10 + cu128 ────────────────────────────────────────
 # (override the template's torch 2.8 — Wan2GP docs warn about a RAM leak in 2.8)
+notify 4 8 "Installing PyTorch 2.10 + cu128 (~3 GB, 2-3 min)"
 echo ""
 echo "── [3] PyTorch 2.10 + cu128 ──"
 pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
   --index-url https://download.pytorch.org/whl/cu128
 
 # ── [4] Wan2GP requirements ─────────────────────────────────────────
+notify 5 8 "Installing Wan2GP requirements (~150 packages, 2-3 min)"
 echo ""
 echo "── [4] Wan2GP requirements (~150 packages) ──"
 pip install -r requirements.txt
 
 # ── [5] hf_transfer (RunPod sets HF_HUB_ENABLE_HF_TRANSFER=1) ───────
+notify 6 8 "Installing hf_transfer"
 echo ""
 echo "── [5] hf_transfer (fast HuggingFace downloads) ──"
 pip install hf_transfer
 
 # ── [6] SageAttention — version depends on GPU architecture ─────────
+notify 7 8 "Installing SageAttention for GPU"
 echo ""
 echo "── [6] SageAttention ──"
 pip install "setuptools<=75.8.2" --force-reinstall
@@ -93,6 +124,7 @@ case "$SM" in
 esac
 
 # ── [7] Final verification ──────────────────────────────────────────
+notify 8 8 "Verifying torch + CUDA"
 echo ""
 echo "── [7] Verify torch + CUDA ──"
 python - <<'PY'

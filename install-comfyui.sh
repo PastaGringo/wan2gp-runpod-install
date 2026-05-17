@@ -19,17 +19,45 @@
 
 set -euo pipefail
 
+# ── Discord notification helper ──
+# Calls DISCORD_WEBHOOK_URL (passed via docker env) with a message.
+# Silent on failure so a webhook outage never breaks the install.
+notify() {
+  local step="$1"
+  local total="${2:-9}"
+  local label="$3"
+  echo ""
+  echo "▶ [${step}/${total}] ${label}"
+  if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
+    local pod="${RUNPOD_POD_ID:-?}"
+    local payload
+    payload=$(python3 -c "
+import json, sys
+print(json.dumps({
+  'username': 'ComfyUI installer',
+  'content': f'\`${pod}\` [${step}/${total}] ${label}'
+}))" 2>/dev/null || echo "{\"content\":\"[${step}/${total}] ${label}\"}")
+    curl -fsS -X POST "$DISCORD_WEBHOOK_URL" \
+      -H "Content-Type: application/json" \
+      --data "$payload" \
+      > /dev/null 2>&1 || true
+  fi
+}
+
 echo "=============================================="
 echo " ComfyUI + Wan 2.2 RunPod installer"
 echo "=============================================="
+notify 0 9 "Starting install"
 
 # ── [0] System check ──────────────────────────────
+notify 1 9 "System check"
 echo ""
 echo "── [0] System check ──"
 nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv
 python3.11 --version
 
 # ── [1] Clone ComfyUI ─────────────────────────────
+notify 2 9 "Cloning ComfyUI"
 echo ""
 echo "── [1] Clone ComfyUI ──"
 cd /workspace
@@ -39,6 +67,7 @@ fi
 cd /workspace/ComfyUI
 
 # ── [2] Create venv ───────────────────────────────
+notify 3 9 "Creating Python 3.11 venv"
 echo ""
 echo "── [2] Create venv (Python 3.11) ──"
 if [ ! -d venv ]; then
@@ -49,22 +78,26 @@ source venv/bin/activate
 python -m pip install --upgrade pip wheel
 
 # ── [3] PyTorch 2.10 + cu128 ──────────────────────
+notify 4 9 "Installing PyTorch 2.10 + cu128 (~3 GB, 2-3 min)"
 echo ""
 echo "── [3] PyTorch 2.10 + cu128 ──"
 pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
   --index-url https://download.pytorch.org/whl/cu128
 
 # ── [4] ComfyUI base requirements ─────────────────
+notify 5 9 "Installing ComfyUI base requirements (~2 min)"
 echo ""
 echo "── [4] ComfyUI base requirements ──"
 pip install -r requirements.txt
 
 # ── [5] hf_transfer (fast HF downloads) ───────────
+notify 6 9 "Installing hf_transfer + huggingface_hub"
 echo ""
 echo "── [5] hf_transfer ──"
 pip install hf_transfer huggingface_hub
 
 # ── [6] Custom nodes ──────────────────────────────
+notify 7 9 "Installing custom nodes (Manager, WanVideoWrapper, RIFE, VHS, KJNodes)"
 echo ""
 echo "── [6] Custom nodes ──"
 cd /workspace/ComfyUI/custom_nodes
@@ -107,12 +140,14 @@ pip install -r ComfyUI-KJNodes/requirements.txt 2>/dev/null || true
 cd /workspace/ComfyUI
 
 # ── [7] Download Wan 2.2 TI2V 5B models ───────────
+notify 8 9 "Downloading Wan 2.2 TI2V 5B models (~15 GB total)"
 echo ""
-echo "── [7] Download Wan 2.2 TI2V 5B (~10 GB) ──"
+echo "── [7] Download Wan 2.2 TI2V 5B (~15 GB) ──"
 mkdir -p models/diffusion_models models/vae models/text_encoders
 
 DIFFUSION="models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
 if [ ! -f "$DIFFUSION" ]; then
+  notify 8 9 "Downloading TI2V 5B diffusion model (~10 GB)"
   echo "  → Downloading TI2V 5B diffusion model (~10 GB)…"
   curl -fL -o "$DIFFUSION" \
     "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
@@ -120,6 +155,7 @@ fi
 
 VAE="models/vae/wan_2.1_vae.safetensors"
 if [ ! -f "$VAE" ]; then
+  notify 8 9 "Downloading Wan 2.1 VAE (~250 MB)"
   echo "  → Downloading Wan 2.1 VAE (~250 MB, also used for Wan 2.2)…"
   curl -fL -o "$VAE" \
     "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
@@ -127,12 +163,14 @@ fi
 
 T5="models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 if [ ! -f "$T5" ]; then
+  notify 8 9 "Downloading T5-XXL text encoder fp8 (~5 GB)"
   echo "  → Downloading T5-XXL text encoder fp8 (~5 GB)…"
   curl -fL -o "$T5" \
     "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 fi
 
 # ── [8] Done ──────────────────────────────────────
+notify 9 9 "Verifying torch/CUDA, finishing up"
 echo ""
 echo "── [8] Verify ──"
 python -c "import torch; print(f'✅ torch {torch.__version__}, CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0)}')"
