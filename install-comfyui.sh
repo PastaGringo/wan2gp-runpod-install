@@ -96,6 +96,26 @@ echo ""
 echo "── [5] hf_transfer ──"
 pip install hf_transfer huggingface_hub
 
+# ── [5b] SageAttention 2.x (RTX 40xx/50xx) for Kijai WanVideoWrapper ───
+# Kijai's WanVideoModelLoader has attention_mode=sageattn by default in
+# example workflows. Without sageattention, every loadmodel call crashes.
+notify 6 9 "Installing SageAttention 2.x for GPU"
+echo ""
+echo "── [5b] SageAttention 2.x (build from source) ──"
+SM=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d ' ')
+pip install "setuptools<=75.8.2" --force-reinstall
+case "$SM" in
+  "8.6")
+    pip install sageattention==1.0.6
+    ;;
+  *)
+    if [ ! -d /tmp/SageAttention ]; then
+      git clone --depth 1 https://github.com/thu-ml/SageAttention /tmp/SageAttention
+    fi
+    (cd /tmp/SageAttention && pip install --no-build-isolation -e .)
+    ;;
+esac
+
 # ── [6] Custom nodes ──────────────────────────────
 notify 7 9 "Installing custom nodes (Manager, WanVideoWrapper, RIFE, VHS, KJNodes)"
 echo ""
