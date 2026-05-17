@@ -12,28 +12,63 @@
 
 set -euo pipefail
 
-# ── Discord notification helper (silent on failure) ──
+# ── Discord notification helpers ──────────────────────────────────
+INSTALL_START_TS=$(date +%s)
+SCRIPT_NAME="Wan2GP installer"
+export SCRIPT_NAME
+
+_discord_post() {
+  [ -z "${DISCORD_WEBHOOK_URL:-}" ] && return 0
+  local color="$1" title="$2" desc="$3"
+  local pod="${RUNPOD_POD_ID:-?}"
+  local elapsed=$(( $(date +%s) - INSTALL_START_TS ))
+  local mm=$(( elapsed / 60 ))
+  local ss=$(( elapsed % 60 ))
+  DISCORD_TITLE="$title" \
+  DISCORD_DESC="$desc" \
+  DISCORD_COLOR="$color" \
+  DISCORD_FOOTER="pod $pod · elapsed ${mm}m${ss}s" \
+  DISCORD_USERNAME="${SCRIPT_NAME:-Installer}" \
+  python3 -c '
+import json, os, urllib.request
+url = os.environ["DISCORD_WEBHOOK_URL"]
+body = json.dumps({
+  "username": os.environ["DISCORD_USERNAME"],
+  "embeds": [{
+    "title": os.environ["DISCORD_TITLE"],
+    "description": os.environ.get("DISCORD_DESC") or " ",
+    "color": int(os.environ["DISCORD_COLOR"]),
+    "footer": {"text": os.environ["DISCORD_FOOTER"]},
+  }]
+}).encode("utf-8")
+req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+try:
+  urllib.request.urlopen(req, timeout=5).read()
+except Exception:
+  pass
+' > /dev/null 2>&1 || true
+}
+
 notify() {
-  local step="$1"
-  local total="${2:-8}"
-  local label="$3"
+  local step="$1" total="${2:-8}" label="$3"
   echo ""
   echo "▶ [${step}/${total}] ${label}"
-  if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
-    local pod="${RUNPOD_POD_ID:-?}"
-    local payload
-    payload=$(python3 -c "
-import json
-print(json.dumps({
-  'username': 'Wan2GP installer',
-  'content': f'\`${pod}\` [${step}/${total}] ${label}'
-}))" 2>/dev/null || echo "{\"content\":\"[${step}/${total}] ${label}\"}")
-    curl -fsS -X POST "$DISCORD_WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      --data "$payload" \
-      > /dev/null 2>&1 || true
-  fi
+  _discord_post 3447003 "[${step}/${total}] ${label}" " "
 }
+
+notify_done() {
+  local url="$1"
+  _discord_post 3066993 "✅ Install complete — UI ready" "Open in browser: ${url}"
+}
+
+notify_error() {
+  local exit_code="$?"
+  local where="${BASH_COMMAND:-unknown}"
+  _discord_post 15158332 "❌ Install FAILED (exit ${exit_code})" "Last command: \`${where}\`\nCheck \`tail -100 /workspace/wan2gp-install.log\` on the pod."
+  exit "$exit_code"
+}
+
+trap notify_error ERR
 
 echo "=============================================="
 echo " Wan2GP RunPod installer"
@@ -146,15 +181,8 @@ except ImportError:
     print(f"⚠️  hf_transfer not installed (downloads will be slower)")
 PY
 
-# Notify Discord webhook if configured (passed via docker env from deploy-pod.py)
-if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
-  GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
-  POD_ID="${RUNPOD_POD_ID:-unknown}"
-  curl -fsS -X POST "$DISCORD_WEBHOOK_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"Wan2GP installer\",\"content\":\"Wan2GP install complete on pod ${POD_ID} (${GPU_NAME}) - UI launching at https://${POD_ID}-7860.proxy.runpod.net\"}" \
-    > /dev/null 2>&1 || true
-fi
+# Final Discord ping with the click-ready UI URL.
+notify_done "https://${RUNPOD_POD_ID:-unknown}-7860.proxy.runpod.net"
 
 echo ""
 echo "=============================================="

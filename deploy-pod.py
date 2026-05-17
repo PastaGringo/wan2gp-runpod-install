@@ -84,15 +84,30 @@ def auth() -> None:
     runpod.api_key = key
 
 
-def discord_notify(message: str) -> None:
-    """POST a message to Discord webhook if DISCORD_WEBHOOK_URL is set. Silent on failure."""
+def discord_notify(title: str, description: str = " ", color: int = 3447003) -> None:
+    """POST a rich embed to Discord webhook if DISCORD_WEBHOOK_URL is set. Silent on failure.
+
+    Colors:
+        3447003  blue   (info)
+        3066993  green  (success)
+        15158332 red    (error)
+        16776960 yellow (warning)
+    """
     url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not url:
         return
     try:
+        payload = {
+            "username": "RunPod Deployer",
+            "embeds": [{
+                "title": title,
+                "description": description,
+                "color": color,
+            }],
+        }
         req = urllib.request.Request(
             url,
-            data=_json.dumps({"username": "RunPod Deployer", "content": message}).encode("utf-8"),
+            data=_json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
         urllib.request.urlopen(req, timeout=5).read()
@@ -185,9 +200,16 @@ def deploy(args: argparse.Namespace) -> None:
     print()
 
     discord_notify(
-        f"🚀 **Pod created** — `{pod_id}` ({args.gpu}, {args.stack})\n"
-        f"Dashboard: https://www.runpod.io/console/pods/{pod_id}\n"
-        f"UI (once {args.stack} is up): https://{pod_id}-{stack['ui_port']}.proxy.runpod.net"
+        title=f"🚀 Pod created — {args.stack} on {args.gpu}",
+        description=(
+            f"**ID:** `{pod_id}`\n"
+            f"**Dashboard:** https://www.runpod.io/console/pods/{pod_id}\n"
+            f"**UI (when ready):** https://{pod_id}-{stack['ui_port']}.proxy.runpod.net\n"
+            f"**Jupyter:** https://{pod_id}-8888.proxy.runpod.net\n\n"
+            f"Auto-install will start once pod is RUNNING (~15 min total for ComfyUI, ~8 min for Wan2GP).\n"
+            f"You'll get pings at each step."
+        ),
+        color=3447003,
     )
 
     print("Waiting for pod to come online (up to 5 min)…", flush=True)
@@ -206,10 +228,18 @@ def deploy(args: argparse.Namespace) -> None:
             print(f"  …still waiting ({(i + 1) * 5}s, desiredStatus={desired or '?'})", flush=True)
     if not online:
         print("⚠️  Pod did not report RUNNING within 5 min — it might still be booting. Check the dashboard.")
-        discord_notify(f"⚠️ Pod `{pod_id}` did not report RUNNING within 5 min — check the dashboard")
+        discord_notify(
+            title=f"⚠️ Pod `{pod_id}` slow to start",
+            description=f"Did not report RUNNING within 5 min. Check https://www.runpod.io/console/pods/{pod_id}",
+            color=16776960,  # yellow
+        )
         return
 
-    discord_notify(f"✅ Pod `{pod_id}` is RUNNING. Auto-install starting (will ping again when ready).")
+    discord_notify(
+        title=f"✅ Pod `{pod_id}` is RUNNING",
+        description=f"Auto-install ({args.stack}) starting inside the pod.\nNext pings will come from the installer for each step.",
+        color=3066993,  # green
+    )
 
     ui_url = f"https://{pod_id}-{stack['ui_port']}.proxy.runpod.net"
     print()
