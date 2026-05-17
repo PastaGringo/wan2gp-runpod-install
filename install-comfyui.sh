@@ -270,14 +270,43 @@ if [ ! -f "$DIFFUSION_14B_LOW" ]; then
     "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
 fi
 
-# 7.6 — Lightx2v step-distillation LoRA (workflow 3 longscene) — 4-step sampling ≈ 6× faster
+# 7.6 — Lightx2v step-distillation LoRA (workflow 3 longscene 480p) — 4-step sampling
 LIGHTX2V="models/loras/WanVideo/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
 if [ ! -f "$LIGHTX2V" ]; then
   notify 8 9 "Lightx2v step-distill LoRA rank64 bf16 (~740 MB)"
-  echo "  → Lightx2v I2V 14B step-distill LoRA rank64 (~740 MB)…"
+  echo "  → Lightx2v I2V 14B 480p step-distill LoRA rank64 (~740 MB)…"
   curl -fL -o "$LIGHTX2V" \
     "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
 fi
+
+# 7.7 — Wan22_Lightx2v HIGH/LOW LoRAs (workflow 4 longscene 720p) — resolution-agnostic
+mkdir -p models/loras/WanVideo/Wan22_Lightx2v
+LIGHTX2V_HIGH="models/loras/WanVideo/Wan22_Lightx2v/Wan_2_2_I2V_A14B_HIGH_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
+if [ ! -f "$LIGHTX2V_HIGH" ]; then
+  notify 8 9 "Wan22 Lightx2v HIGH 4-step LoRA fp16 (~600 MB)"
+  echo "  → Wan22 Lightx2v HIGH 4-step LoRA (~600 MB)…"
+  curl -fL -o "$LIGHTX2V_HIGH" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_Lightx2v/Wan_2_2_I2V_A14B_HIGH_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
+fi
+
+LIGHTX2V_LOW="models/loras/WanVideo/Wan22_Lightx2v/Wan_2_2_I2V_A14B_LOW_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
+if [ ! -f "$LIGHTX2V_LOW" ]; then
+  notify 8 9 "Wan22 Lightx2v LOW 4-step LoRA fp16 (~600 MB)"
+  echo "  → Wan22 Lightx2v LOW 4-step LoRA (~600 MB)…"
+  curl -fL -o "$LIGHTX2V_LOW" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_Lightx2v/Wan_2_2_I2V_A14B_LOW_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
+fi
+
+# 7.8 — Pre-installed workflows in the user dir so they show up in the
+# ComfyUI Workflows panel at first boot (no drag-drop required).
+WF_DIR=/workspace/ComfyUI/user/default/workflows
+mkdir -p "$WF_DIR"
+for wf in wan22_5B_I2V wan22_14B_I2V wan22_14B_I2V_longscene wan22_14B_I2V_longscene_720p; do
+  if [ ! -f "$WF_DIR/${wf}.json" ]; then
+    curl -fsSL -o "$WF_DIR/${wf}.json" \
+      "https://raw.githubusercontent.com/PastaGringo/wan2gp-runpod-install/main/workflows/${wf}.json"
+  fi
+done
 
 # ── [8] Done ──────────────────────────────────────
 notify 9 9 "Verifying torch/CUDA, finishing up"
