@@ -9,9 +9,31 @@ Handles all the gotchas I hit setting this up by hand:
 - SageAttention built **with `--no-build-isolation`** (its `setup.py` imports torch — fails in pip's isolated build env)
 - Auto-picks SageAttention version: **1.0.6 prebuilt for RTX 30xx**, **2.x source-built for RTX 40xx / 50xx / H100**
 
-## Pod setup
+## Quick start — deploy a pod from your terminal
 
-Deploy a pod with this template:
+If you have [uv](https://docs.astral.sh/uv/) installed, the `deploy-pod.py` script in this repo creates a Wan2GP-ready pod with one command (no Truss, no clicking in the RunPod UI):
+
+```bash
+# One-time: set your RunPod API key (get it at runpod.io/console/user/settings)
+$env:RUNPOD_API_KEY = "rpa_..."     # PowerShell session
+setx RUNPOD_API_KEY "rpa_..."        # Windows persistent (restart shell)
+export RUNPOD_API_KEY="rpa_..."      # bash/zsh
+
+# Deploy a RTX 5090 pod (default, ~0.99 $/hr)
+uv run deploy-pod.py
+
+# Other commands
+uv run deploy-pod.py deploy --gpu "RTX 4090"  # cheaper GPU
+uv run deploy-pod.py list                     # list your pods
+uv run deploy-pod.py stop <pod-id>            # stop (keep volume)
+uv run deploy-pod.py destroy <pod-id>         # terminate (deletes pod + container disk)
+```
+
+The script provisions: RTX 5090, 80 GB container disk, 100 GB volume, ports 7860/8888/22 exposed, RunPod's PyTorch 2.8 + CUDA 12.8 Ubuntu 24.04 image. It then waits for the pod to come online and prints the URLs + the install one-liner.
+
+## Pod setup (manual via RunPod UI)
+
+Or, deploy manually with this template:
 
 - **Template**: `runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404` (or any PyTorch 2.8+ / CUDA 12.8+ / Python 3.11 image)
 - **GPU**: RTX 4090 (24 GB) or RTX 5090 (32 GB) for Wan 2.2 14B fp16. RTX 30xx (12 GB) works too but only with the 5B model.
