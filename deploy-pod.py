@@ -118,35 +118,27 @@ def discord_notify(title: str, description: str = " ", color: int = 3447003) -> 
 def build_docker_args(stack: str) -> str:
     """Build the auto-install docker_args chain for the given stack.
 
-    Single-line bash -c chain to avoid newlines, apostrophes, or any character
-    that breaks GraphQL serialization on RunPod's side.
+    Kept minimal: a single short bash -c. The previous version with `if/then/fi`
+    brackets and `===` markers triggered a misleading
+    'This machine does not have the resources to deploy your pod' error from
+    RunPod's GraphQL (the chain was being silently rejected upstream of the
+    scheduler). The current chain is single-statement && and works reliably.
+
+    The installer script does its own idempotency (checks for existing files
+    before downloading) so re-running on container bounce is safe and fast.
     """
     s = STACKS[stack]
     install_url = s["install_url"]
     launch_dir = s["launch_dir"]
     launch_cmd = s["launch_cmd"]
-    # No apostrophes anywhere in the chain. Single-quote-safe.
-    # Idempotent: skip install if already done (sentinel file), skip relaunch
-    # if a process is already listening on the UI port. Avoids restart loops
-    # if Docker bounces the container after the user manually launched the UI.
-    port = STACKS[stack]["ui_port"]
-    sentinel = f"/workspace/.{stack}-installed"
+    log = f"/workspace/{stack}-install.log"
+    runlog = f"/workspace/{stack}-run.log"
     chain = (
         f"/start.sh > /workspace/runpod-start.log 2>&1 & "
         f"sleep 5 && "
-        f"if [ ! -f {sentinel} ]; then "
-        f"  (echo === Auto-install {stack} started === && "
-        f"   curl -fsSL {install_url} | bash && "
-        f"   touch {sentinel}) > /workspace/{stack}-install.log 2>&1; "
-        f"fi && "
-        f"if ss -ltn | grep -q :{port}; then "
-        f"  echo === Port {port} already busy, skipping {stack} launch === >> /workspace/{stack}-run.log; "
-        f"  tail -f /dev/null; "
-        f"else "
-        f"  cd {launch_dir} && source venv/bin/activate && "
-        f"  echo === Launching {stack} === >> /workspace/{stack}-run.log && "
-        f"  exec {launch_cmd} >> /workspace/{stack}-run.log 2>&1; "
-        f"fi"
+        f"curl -fsSL {install_url} | bash > {log} 2>&1 && "
+        f"cd {launch_dir} && source venv/bin/activate && "
+        f"exec {launch_cmd} >> {runlog} 2>&1"
     )
     return f"bash -c '{chain}'"
 
