@@ -140,33 +140,40 @@ pip install -r ComfyUI-KJNodes/requirements.txt 2>/dev/null || true
 cd /workspace/ComfyUI
 
 # ── [7] Download Wan 2.2 TI2V 5B models ───────────
-notify 8 9 "Downloading Wan 2.2 TI2V 5B models (~15 GB total)"
+# Kijai's WanVideoWrapper expects specific filenames + folder layout that
+# differ from Comfy-Org's repackaged versions. We download Kijai's files
+# (Wan2_2-VAE_bf16, umt5-xxl-enc-bf16, wan2.2_ti2v_5B_fp16) at the paths
+# his example workflows reference, so the workflows load without "missing
+# model" errors.
+notify 8 9 "Downloading Wan 2.2 TI2V 5B models (~22 GB total — Kijai format)"
 echo ""
-echo "── [7] Download Wan 2.2 TI2V 5B (~15 GB) ──"
-mkdir -p models/diffusion_models models/vae models/text_encoders
+echo "── [7] Download Wan 2.2 TI2V 5B (~22 GB) ──"
+mkdir -p models/diffusion_models/WanVideo/2_2 models/vae/wanvideo models/text_encoders
 
-DIFFUSION="models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+DIFFUSION="models/diffusion_models/WanVideo/2_2/wan2.2_ti2v_5B_fp16.safetensors"
 if [ ! -f "$DIFFUSION" ]; then
   notify 8 9 "Downloading TI2V 5B diffusion model (~10 GB)"
-  echo "  → Downloading TI2V 5B diffusion model (~10 GB)…"
+  echo "  → Downloading TI2V 5B diffusion model from Comfy-Org (~10 GB)…"
+  # Comfy-Org hosts the vanilla 5B; Kijai's HF repo only has the FastWan variant.
+  # The file content is the same — we just place it where Kijai workflows expect it.
   curl -fL -o "$DIFFUSION" \
     "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
 fi
 
-VAE="models/vae/wan_2.1_vae.safetensors"
+VAE="models/vae/wanvideo/Wan2_2_VAE_bf16.safetensors"
 if [ ! -f "$VAE" ]; then
-  notify 8 9 "Downloading Wan 2.1 VAE (~250 MB)"
-  echo "  → Downloading Wan 2.1 VAE (~250 MB, also used for Wan 2.2)…"
+  notify 8 9 "Downloading Wan 2.2 VAE bf16 (~1.4 GB)"
+  echo "  → Downloading Wan 2.2 VAE bf16 from Kijai (~1.4 GB)…"
   curl -fL -o "$VAE" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_2_VAE_bf16.safetensors"
 fi
 
-T5="models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+T5="models/text_encoders/umt5-xxl-enc-bf16.safetensors"
 if [ ! -f "$T5" ]; then
-  notify 8 9 "Downloading T5-XXL text encoder fp8 (~5 GB)"
-  echo "  → Downloading T5-XXL text encoder fp8 (~5 GB)…"
+  notify 8 9 "Downloading T5-XXL text encoder bf16 (~11 GB)"
+  echo "  → Downloading T5-XXL text encoder bf16 (~11 GB)…"
   curl -fL -o "$T5" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors"
 fi
 
 # ── [8] Done ──────────────────────────────────────
