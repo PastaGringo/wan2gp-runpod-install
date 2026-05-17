@@ -23,6 +23,10 @@ $env:RUNPOD_API_KEY = "rpa_..."     # PowerShell session
 setx RUNPOD_API_KEY "rpa_..."        # Windows persistent (restart shell)
 export RUNPOD_API_KEY="rpa_..."      # bash/zsh
 
+# OPTIONAL: get Discord notifications on pod-created / install-done
+$env:DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+setx DISCORD_WEBHOOK_URL "https://discord.com/api/webhooks/..."
+
 # Deploy a RTX 5090 pod with Wan2GP (default, ~0.99 $/hr)
 # By default, auto-install runs inside the pod — Wan2GP boots automatically.
 uv run deploy-pod.py

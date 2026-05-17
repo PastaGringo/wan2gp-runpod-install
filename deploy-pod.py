@@ -24,9 +24,11 @@ Usage:
 """
 
 import argparse
+import json as _json
 import os
 import sys
 import time
+import urllib.request
 
 # On Windows the default console encoding (cp1252) can't print Unicode arrows
 # like → that we use in status messages. Force UTF-8 on stdout/stderr so the
@@ -82,6 +84,22 @@ def auth() -> None:
     runpod.api_key = key
 
 
+def discord_notify(message: str) -> None:
+    """POST a message to Discord webhook if DISCORD_WEBHOOK_URL is set. Silent on failure."""
+    url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not url:
+        return
+    try:
+        req = urllib.request.Request(
+            url,
+            data=_json.dumps({"username": "RunPod Deployer", "content": message}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5).read()
+    except Exception:
+        pass
+
+
 def build_docker_args(stack: str) -> str:
     """Build the auto-install docker_args chain for the given stack.
 
@@ -124,6 +142,12 @@ def deploy(args: argparse.Namespace) -> None:
     print(f"  Auto-install:    {mode}")
     print()
 
+    # Forward the Discord webhook URL into the pod env so install scripts can ping it.
+    env_dict = {}
+    discord_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if discord_url:
+        env_dict["DISCORD_WEBHOOK_URL"] = discord_url
+
     create_kwargs = dict(
         name=args.name,
         image_name=args.image,
@@ -135,6 +159,8 @@ def deploy(args: argparse.Namespace) -> None:
         ports=ports,
         cloud_type=args.cloud,
     )
+    if env_dict:
+        create_kwargs["env"] = env_dict
     if auto:
         create_kwargs["docker_args"] = build_docker_args(args.stack)
 
@@ -145,20 +171,32 @@ def deploy(args: argparse.Namespace) -> None:
     print(f"   Dashboard:  https://www.runpod.io/console/pods/{pod_id}")
     print()
 
+    discord_notify(
+        f"🚀 **Pod created** — `{pod_id}` ({args.gpu}, {args.stack})\n"
+        f"Dashboard: https://www.runpod.io/console/pods/{pod_id}\n"
+        f"UI (once {args.stack} is up): https://{pod_id}-{stack['ui_port']}.proxy.runpod.net"
+    )
+
     print("Waiting for pod to come online (up to 5 min)…", flush=True)
+    online = False
     for i in range(60):
-        info = runpod.get_pod(pod_id)
+        info = runpod.get_pod(pod_id) or {}
         runtime = info.get("runtime") or {}
-        uptime = runtime.get("uptimeInSeconds") or 0
-        if uptime > 0:
-            print(f"✅ Pod RUNNING (uptime {uptime}s)")
+        desired = info.get("desiredStatus") or ""
+        # Pod is considered online if either: runtime has uptime, OR desiredStatus says RUNNING
+        if runtime.get("uptimeInSeconds", 0) > 0 or desired == "RUNNING":
+            online = True
+            print(f"✅ Pod RUNNING (status={desired or 'runtime'})")
             break
         time.sleep(5)
         if i % 6 == 5:
-            print(f"  …still waiting ({(i + 1) * 5}s)", flush=True)
-    else:
-        print("⚠️  Pod still not RUNNING after 5 min — check the dashboard.")
+            print(f"  …still waiting ({(i + 1) * 5}s, desiredStatus={desired or '?'})", flush=True)
+    if not online:
+        print("⚠️  Pod did not report RUNNING within 5 min — it might still be booting. Check the dashboard.")
+        discord_notify(f"⚠️ Pod `{pod_id}` did not report RUNNING within 5 min — check the dashboard")
         return
+
+    discord_notify(f"✅ Pod `{pod_id}` is RUNNING. Auto-install starting (will ping again when ready).")
 
     ui_url = f"https://{pod_id}-{stack['ui_port']}.proxy.runpod.net"
     print()

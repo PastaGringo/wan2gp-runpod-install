@@ -114,6 +114,16 @@ except ImportError:
     print(f"⚠️  hf_transfer not installed (downloads will be slower)")
 PY
 
+# Notify Discord webhook if configured (passed via docker env from deploy-pod.py)
+if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
+  GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+  POD_ID="${RUNPOD_POD_ID:-unknown}"
+  curl -fsS -X POST "$DISCORD_WEBHOOK_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"Wan2GP installer\",\"content\":\"Wan2GP install complete on pod ${POD_ID} (${GPU_NAME}) - UI launching at https://${POD_ID}-7860.proxy.runpod.net\"}" \
+    > /dev/null 2>&1 || true
+fi
+
 echo ""
 echo "=============================================="
 echo " ✅ Install complete!"
