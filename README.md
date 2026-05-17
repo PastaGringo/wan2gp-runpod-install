@@ -59,8 +59,9 @@ Drag-and-drop these into the ComfyUI UI to get a working Wan 2.2 I2V pipeline.
 |---|---|---|
 | [`wan22_5B_I2V.json`](workflows/wan22_5B_I2V.json) | TI2V 5B | Fast iteration on RTX 4090 / 5090. ~1-2 min/video. |
 | [`wan22_14B_I2V.json`](workflows/wan22_14B_I2V.json) | I2V A14B | Best quality. ~3-5 min/video, needs ~24 GB VRAM. |
+| [`wan22_14B_I2V_longscene.json`](workflows/wan22_14B_I2V_longscene.json) | I2V A14B + RIFE 2x | Long & smooth: 14B I2V + frame interpolation for 32fps output. Frame count bumped to 161 base (~10s). Add `WanVideoContextOptions` in the UI (one click on the sampler's `context_options` input) to push to 20-60s scenes. |
 
-These are Kijai's official example workflows ([source](https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/main/example_workflows)) mirrored here for convenience. The `install-comfyui.sh` script also clones them to `/workspace/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/example_workflows/` on the pod.
+The first two are Kijai's official example workflows ([source](https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/main/example_workflows)) mirrored here for convenience. The third is built from the 14B one by [`workflows/build-longscene.py`](workflows/build-longscene.py) — re-run it to regenerate if Kijai updates the base. The `install-comfyui.sh` script also clones them to `/workspace/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/example_workflows/` on the pod.
 
 ### How to use
 
