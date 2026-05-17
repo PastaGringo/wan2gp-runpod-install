@@ -1,6 +1,6 @@
 # Wan2GP RunPod Installer
 
-Turnkey installer for [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) (Wan 2.1 / Wan 2.2 video generation, low-VRAM optimized UI by DeepBeepMeep) on RunPod GPU pods.
+**One command from your laptop → a Wan2GP UI live in ~8 minutes.** Turnkey installer + Python deployer for [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) (Wan 2.1 / Wan 2.2 video generation, low-VRAM optimized UI by DeepBeepMeep) on RunPod GPU pods.
 
 Handles all the gotchas I hit setting this up by hand:
 
@@ -8,6 +8,7 @@ Handles all the gotchas I hit setting this up by hand:
 - `hf_transfer` installed (RunPod sets `HF_HUB_ENABLE_HF_TRANSFER=1` by default — without the package, every model download throws)
 - SageAttention built **with `--no-build-isolation`** (its `setup.py` imports torch — fails in pip's isolated build env)
 - Auto-picks SageAttention version: **1.0.6 prebuilt for RTX 30xx**, **2.x source-built for RTX 40xx / 50xx / H100**
+- **Auto-install on pod boot** via `docker_args`: pod spawn → install → wgp.py launched, all without SSHing in
 
 ## Quick start — deploy a pod from your terminal
 
@@ -20,16 +21,25 @@ setx RUNPOD_API_KEY "rpa_..."        # Windows persistent (restart shell)
 export RUNPOD_API_KEY="rpa_..."      # bash/zsh
 
 # Deploy a RTX 5090 pod (default, ~0.99 $/hr)
+# By default, auto-install runs inside the pod — Wan2GP boots automatically.
 uv run deploy-pod.py
 
 # Other commands
-uv run deploy-pod.py deploy --gpu "RTX 4090"  # cheaper GPU
-uv run deploy-pod.py list                     # list your pods
-uv run deploy-pod.py stop <pod-id>            # stop (keep volume)
-uv run deploy-pod.py destroy <pod-id>         # terminate (deletes pod + container disk)
+uv run deploy-pod.py deploy --gpu "RTX 4090"      # cheaper GPU
+uv run deploy-pod.py deploy --no-auto-install     # manual install (paste curl one-liner yourself)
+uv run deploy-pod.py list                         # list your pods
+uv run deploy-pod.py stop <pod-id>                # stop (keep volume)
+uv run deploy-pod.py destroy <pod-id>             # terminate (deletes pod + container disk)
 ```
 
-The script provisions: RTX 5090, 80 GB container disk, 100 GB volume, ports 7860/8888/22 exposed, RunPod's PyTorch 2.8 + CUDA 12.8 Ubuntu 24.04 image. It then waits for the pod to come online and prints the URLs + the install one-liner.
+The script provisions: RTX 5090, 80 GB container disk, 100 GB volume, ports 7860/8888/22 exposed, RunPod's PyTorch 2.8 + CUDA 12.8 Ubuntu 24.04 image. With auto-install ON (default), it overrides the container's `docker_args` to chain `/start.sh` (Jupyter+SSH) + `install-wan2gp.sh` + `python wgp.py --listen --server-port 7860` so the Gradio UI is reachable at `https://<podid>-7860.proxy.runpod.net` after ~6-8 min.
+
+Watch progress from the pod's Jupyter terminal:
+
+```bash
+tail -f /workspace/wan2gp-install.log     # install progress
+tail -f /workspace/wan2gp-run.log         # wgp.py boot logs
+```
 
 ## Pod setup (manual via RunPod UI)
 
