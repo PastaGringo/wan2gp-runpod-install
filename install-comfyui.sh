@@ -159,41 +159,80 @@ pip install -r ComfyUI-KJNodes/requirements.txt 2>/dev/null || true
 
 cd /workspace/ComfyUI
 
-# ── [7] Download Wan 2.2 TI2V 5B models ───────────
-# Kijai's WanVideoWrapper expects specific filenames + folder layout that
-# differ from Comfy-Org's repackaged versions. We download Kijai's files
-# (Wan2_2-VAE_bf16, umt5-xxl-enc-bf16, wan2.2_ti2v_5B_fp16) at the paths
-# his example workflows reference, so the workflows load without "missing
-# model" errors.
-notify 8 9 "Downloading Wan 2.2 TI2V 5B models (~22 GB total — Kijai format)"
+# ── [7] Download all models used by the 3 example workflows ──────────
+# Covers:
+#   - wan22_5B_I2V.json         → TI2V 5B + Wan2.2 VAE + T5
+#   - wan22_14B_I2V.json        → I2V-A14B HIGH/LOW fp8 + Wan2.1 VAE + T5
+#   - wan22_14B_I2V_longscene.json → same as 14B + Lightx2v LoRA
+# Total ~52 GB on disk (fits in the default 100 GB volume).
+notify 8 9 "Downloading models for all workflows (~52 GB total — first time only)"
 echo ""
-echo "── [7] Download Wan 2.2 TI2V 5B (~22 GB) ──"
-mkdir -p models/diffusion_models/WanVideo/2_2 models/vae/wanvideo models/text_encoders
+echo "── [7] Download models for all 3 workflows (~52 GB) ──"
+mkdir -p models/diffusion_models/WanVideo/2_2 \
+         models/vae/wanvideo \
+         models/text_encoders \
+         models/loras/WanVideo/Lightx2v
 
-DIFFUSION="models/diffusion_models/WanVideo/2_2/wan2.2_ti2v_5B_fp16.safetensors"
-if [ ! -f "$DIFFUSION" ]; then
-  notify 8 9 "Downloading TI2V 5B diffusion model (~10 GB)"
-  echo "  → Downloading TI2V 5B diffusion model from Comfy-Org (~10 GB)…"
-  # Comfy-Org hosts the vanilla 5B; Kijai's HF repo only has the FastWan variant.
-  # The file content is the same — we just place it where Kijai workflows expect it.
-  curl -fL -o "$DIFFUSION" \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+# 7.1 — Text encoder (shared by all workflows)
+T5="models/text_encoders/umt5-xxl-enc-bf16.safetensors"
+if [ ! -f "$T5" ]; then
+  notify 8 9 "T5-XXL text encoder bf16 (~11 GB)"
+  echo "  → T5-XXL text encoder bf16 (~11 GB)…"
+  curl -fL -o "$T5" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors"
 fi
 
-VAE="models/vae/wanvideo/Wan2_2_VAE_bf16.safetensors"
-if [ ! -f "$VAE" ]; then
-  notify 8 9 "Downloading Wan 2.2 VAE bf16 (~1.4 GB)"
-  echo "  → Downloading Wan 2.2 VAE bf16 from Kijai (~1.4 GB)…"
-  curl -fL -o "$VAE" \
+# 7.2 — VAEs (Wan 2.2 for 5B workflow, Wan 2.1 for 14B workflow)
+VAE22="models/vae/wanvideo/Wan2_2_VAE_bf16.safetensors"
+if [ ! -f "$VAE22" ]; then
+  notify 8 9 "Wan 2.2 VAE bf16 (~1.4 GB)"
+  echo "  → Wan 2.2 VAE bf16 (~1.4 GB)…"
+  curl -fL -o "$VAE22" \
     "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_2_VAE_bf16.safetensors"
 fi
 
-T5="models/text_encoders/umt5-xxl-enc-bf16.safetensors"
-if [ ! -f "$T5" ]; then
-  notify 8 9 "Downloading T5-XXL text encoder bf16 (~11 GB)"
-  echo "  → Downloading T5-XXL text encoder bf16 (~11 GB)…"
-  curl -fL -o "$T5" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors"
+VAE21="models/vae/wanvideo/Wan2_1_VAE_bf16.safetensors"
+if [ ! -f "$VAE21" ]; then
+  notify 8 9 "Wan 2.1 VAE bf16 (~250 MB)"
+  echo "  → Wan 2.1 VAE bf16 (~250 MB)…"
+  curl -fL -o "$VAE21" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"
+fi
+
+# 7.3 — Wan 2.2 TI2V 5B (workflow 1) — vanilla 5B from Comfy-Org
+DIFFUSION_5B="models/diffusion_models/WanVideo/2_2/wan2.2_ti2v_5B_fp16.safetensors"
+if [ ! -f "$DIFFUSION_5B" ]; then
+  notify 8 9 "Wan 2.2 TI2V 5B diffusion model (~10 GB)"
+  echo "  → Wan 2.2 TI2V 5B fp16 (~10 GB)…"
+  curl -fL -o "$DIFFUSION_5B" \
+    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+fi
+
+# 7.4 — Wan 2.2 I2V 14B HIGH fp8 (workflows 2 + 3) — Kijai's MoE high-noise expert
+DIFFUSION_14B_HIGH="models/diffusion_models/WanVideo/2_2/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+if [ ! -f "$DIFFUSION_14B_HIGH" ]; then
+  notify 8 9 "Wan 2.2 I2V 14B HIGH fp8 e4m3fn (~15 GB)"
+  echo "  → Wan 2.2 I2V 14B HIGH fp8 (~15 GB)…"
+  curl -fL -o "$DIFFUSION_14B_HIGH" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+fi
+
+# 7.5 — Wan 2.2 I2V 14B LOW fp8 (workflows 2 + 3) — Kijai's MoE low-noise expert
+DIFFUSION_14B_LOW="models/diffusion_models/WanVideo/2_2/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
+if [ ! -f "$DIFFUSION_14B_LOW" ]; then
+  notify 8 9 "Wan 2.2 I2V 14B LOW fp8 e4m3fn (~15 GB)"
+  echo "  → Wan 2.2 I2V 14B LOW fp8 (~15 GB)…"
+  curl -fL -o "$DIFFUSION_14B_LOW" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors"
+fi
+
+# 7.6 — Lightx2v step-distillation LoRA (workflow 3 longscene) — 4-step sampling ≈ 6× faster
+LIGHTX2V="models/loras/WanVideo/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
+if [ ! -f "$LIGHTX2V" ]; then
+  notify 8 9 "Lightx2v step-distill LoRA rank64 bf16 (~740 MB)"
+  echo "  → Lightx2v I2V 14B step-distill LoRA rank64 (~740 MB)…"
+  curl -fL -o "$LIGHTX2V" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"
 fi
 
 # ── [8] Done ──────────────────────────────────────
