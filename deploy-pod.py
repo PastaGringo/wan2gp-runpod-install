@@ -41,9 +41,24 @@ GPU_TYPES = {
 }
 
 DEFAULT_IMAGE = "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404"
-INSTALL_SCRIPT_URL = (
-    "https://raw.githubusercontent.com/PastaGringo/wan2gp-runpod-install/main/install-wan2gp.sh"
-)
+REPO_RAW = "https://raw.githubusercontent.com/PastaGringo/wan2gp-runpod-install/main"
+
+STACKS = {
+    "wan2gp": {
+        "install_url": f"{REPO_RAW}/install-wan2gp.sh",
+        "launch_dir": "/workspace/Wan2GP",
+        "launch_cmd": "python wgp.py --listen --server-port 7860",
+        "ui_port": 7860,
+        "label": "WanGP (Gradio UI, simple)",
+    },
+    "comfyui": {
+        "install_url": f"{REPO_RAW}/install-comfyui.sh",
+        "launch_dir": "/workspace/ComfyUI",
+        "launch_cmd": "python main.py --listen 0.0.0.0 --port 8188",
+        "ui_port": 8188,
+        "label": "ComfyUI (node graph, advanced pipelines)",
+    },
+}
 
 
 def auth() -> None:
@@ -57,36 +72,45 @@ def auth() -> None:
     runpod.api_key = key
 
 
-AUTO_INSTALL_DOCKER_ARGS = """bash -c '
+def build_docker_args(stack: str) -> str:
+    """Build the auto-install docker_args chain for the given stack."""
+    s = STACKS[stack]
+    return f"""bash -c '
 # Run RunPod's default entrypoint (Jupyter, SSH) in background
 /start.sh > /workspace/runpod-start.log 2>&1 &
 
 # Wait a few seconds for /workspace to be mounted
 sleep 5
 
-# Run the Wan2GP installer
+# Run the installer
 {{
-  echo "=== Auto-install started at $(date) ==="
-  curl -fsSL {INSTALL_URL} | bash
-}} > /workspace/wan2gp-install.log 2>&1
+  echo "=== Auto-install ({stack}) started at $(date) ==="
+  curl -fsSL {s["install_url"]} | bash
+}} > /workspace/{stack}-install.log 2>&1
 
-# Launch wgp.py on port 7860 (RunPod proxy exposes it via https://<podid>-7860.proxy.runpod.net)
-cd /workspace/Wan2GP && source venv/bin/activate
-echo "=== Launching wgp.py at $(date) ===" >> /workspace/wan2gp-run.log
-exec python wgp.py --listen --server-port 7860 >> /workspace/wan2gp-run.log 2>&1
-'""".replace("{INSTALL_URL}", INSTALL_SCRIPT_URL)
+# Launch the UI
+cd {s["launch_dir"]} && source venv/bin/activate
+echo "=== Launching {stack} at $(date) ===" >> /workspace/{stack}-run.log
+exec {s["launch_cmd"]} >> /workspace/{stack}-run.log 2>&1
+'"""
 
 
 def deploy(args: argparse.Namespace) -> None:
     auth()
     gpu_id = GPU_TYPES.get(args.gpu, args.gpu)
     auto = not args.no_auto_install
+    stack = STACKS[args.stack]
+
+    # Always expose 7860 + 8188 + 8888 + 22 so swapping stacks later is friction-free
+    ports = "7860/http,8188/http,8888/http,22/tcp"
+
     print(f"→ Creating pod '{args.name}' on {gpu_id} ({args.cloud})")
     print(f"  Image:           {args.image}")
     print(f"  Container disk:  {args.container_disk} GB")
     print(f"  Volume:          {args.volume} GB  →  /workspace")
-    print(f"  Ports:           7860/http (Gradio), 8888/http (Jupyter), 22/tcp (SSH)")
-    mode = "ON — Wan2GP boots automatically (~6-8 min)" if auto else "OFF — paste the install commands manually"
+    print(f"  Ports:           7860/http, 8188/http, 8888/http (Jupyter), 22/tcp (SSH)")
+    print(f"  Stack:           {args.stack} — {stack['label']}")
+    mode = f"ON — {args.stack} boots automatically (~6-8 min for Wan2GP, ~10-15 min for ComfyUI with model DL)" if auto else "OFF — paste the install commands manually"
     print(f"  Auto-install:    {mode}")
     print()
 
@@ -98,11 +122,11 @@ def deploy(args: argparse.Namespace) -> None:
         container_disk_in_gb=args.container_disk,
         volume_in_gb=args.volume,
         volume_mount_path="/workspace",
-        ports="7860/http,8888/http,22/tcp",
+        ports=ports,
         cloud_type=args.cloud,
     )
     if auto:
-        create_kwargs["docker_args"] = AUTO_INSTALL_DOCKER_ARGS
+        create_kwargs["docker_args"] = build_docker_args(args.stack)
 
     pod = runpod.create_pod(**create_kwargs)
 
@@ -126,25 +150,26 @@ def deploy(args: argparse.Namespace) -> None:
         print("⚠️  Pod still not RUNNING after 5 min — check the dashboard.")
         return
 
+    ui_url = f"https://{pod_id}-{stack['ui_port']}.proxy.runpod.net"
     print()
     print("─" * 60)
-    print(f"  Jupyter:        https://{pod_id}-8888.proxy.runpod.net")
-    print(f"  Wan2GP Gradio:  https://{pod_id}-7860.proxy.runpod.net")
+    print(f"  Jupyter:   https://{pod_id}-8888.proxy.runpod.net")
+    print(f"  UI ({args.stack}):  {ui_url}")
     print("─" * 60)
     print()
     if auto:
-        print("⏳ Auto-install is running INSIDE the pod (~6-8 min).")
-        print("   The Gradio URL above will start responding once wgp.py is launched.")
+        print(f"⏳ Auto-install ({args.stack}) is running INSIDE the pod.")
+        print(f"   The UI URL above will start responding once {args.stack} is launched.")
         print()
         print("   To watch progress, open Jupyter → New → Terminal and run:")
-        print("     tail -f /workspace/wan2gp-install.log     # install progress")
-        print("     tail -f /workspace/wan2gp-run.log         # wgp.py boot logs")
+        print(f"     tail -f /workspace/{args.stack}-install.log   # install progress")
+        print(f"     tail -f /workspace/{args.stack}-run.log       # boot logs")
     else:
         print("Manual install — open Jupyter terminal and run:")
         print()
-        print(f"  curl -fsSL {INSTALL_SCRIPT_URL} | bash")
-        print("  cd /workspace/Wan2GP && source venv/bin/activate \\")
-        print("    && python wgp.py --listen --server-port 7860")
+        print(f"  curl -fsSL {stack['install_url']} | bash")
+        print(f"  cd {stack['launch_dir']} && source venv/bin/activate \\")
+        print(f"    && {stack['launch_cmd']}")
     print()
     print(f"Stop when done:     uv run deploy-pod.py stop {pod_id}")
     print(f"Destroy completely: uv run deploy-pod.py destroy {pod_id}")
@@ -203,6 +228,12 @@ def main() -> None:
     p_deploy.add_argument("--container-disk", type=int, default=80, help="Container disk size in GB (default 80)")
     p_deploy.add_argument("--volume", type=int, default=100, help="Volume disk size in GB (default 100 — don't go below 80 if testing multiple 14B models)")
     p_deploy.add_argument("--cloud", choices=["SECURE", "COMMUNITY"], default="SECURE", help="Cloud type (default SECURE)")
+    p_deploy.add_argument(
+        "--stack",
+        choices=list(STACKS),
+        default="wan2gp",
+        help="Which UI to install + auto-launch (default: wan2gp). 'comfyui' for node-graph workflows.",
+    )
     p_deploy.add_argument(
         "--no-auto-install",
         action="store_true",

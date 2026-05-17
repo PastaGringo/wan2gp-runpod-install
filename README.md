@@ -1,6 +1,9 @@
-# Wan2GP RunPod Installer
+# Wan 2.2 RunPod Installer
 
-**One command from your laptop → a Wan2GP UI live in ~8 minutes.** Turnkey installer + Python deployer for [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) (Wan 2.1 / Wan 2.2 video generation, low-VRAM optimized UI by DeepBeepMeep) on RunPod GPU pods.
+**One command from your laptop → a Wan 2.2 UI live in ~8 minutes.** Turnkey installer + Python deployer for two UIs on top of [Wan](https://github.com/Wan-Video/Wan2.2):
+
+- **[Wan2GP](https://github.com/deepbeepmeep/Wan2GP)** (Gradio UI by DeepBeepMeep) — simple form-based, optimized low-VRAM. Best to start.
+- **[ComfyUI](https://github.com/comfyanonymous/ComfyUI)** + Kijai's [WanVideoWrapper](https://github.com/kijai/ComfyUI-WanVideoWrapper) — node-graph editor, advanced pipelines (sliding window long-form, frame interpolation, multi-model chains).
 
 Handles all the gotchas I hit setting this up by hand:
 
@@ -20,11 +23,14 @@ $env:RUNPOD_API_KEY = "rpa_..."     # PowerShell session
 setx RUNPOD_API_KEY "rpa_..."        # Windows persistent (restart shell)
 export RUNPOD_API_KEY="rpa_..."      # bash/zsh
 
-# Deploy a RTX 5090 pod (default, ~0.99 $/hr)
+# Deploy a RTX 5090 pod with Wan2GP (default, ~0.99 $/hr)
 # By default, auto-install runs inside the pod — Wan2GP boots automatically.
 uv run deploy-pod.py
 
-# Other commands
+# OR deploy with ComfyUI + Wan 2.2 nodes + workflows preinstalled
+uv run deploy-pod.py deploy --stack comfyui
+
+# Other options
 uv run deploy-pod.py deploy --gpu "RTX 4090"      # cheaper GPU
 uv run deploy-pod.py deploy --no-auto-install     # manual install (paste curl one-liner yourself)
 uv run deploy-pod.py list                         # list your pods
@@ -37,9 +43,34 @@ The script provisions: RTX 5090, 80 GB container disk, 100 GB volume, ports 7860
 Watch progress from the pod's Jupyter terminal:
 
 ```bash
-tail -f /workspace/wan2gp-install.log     # install progress
+tail -f /workspace/wan2gp-install.log     # install progress (wan2gp stack)
 tail -f /workspace/wan2gp-run.log         # wgp.py boot logs
+
+# OR for the ComfyUI stack
+tail -f /workspace/comfyui-install.log
+tail -f /workspace/comfyui-run.log
 ```
+
+## ComfyUI workflows (`workflows/` folder in this repo)
+
+Drag-and-drop these into the ComfyUI UI to get a working Wan 2.2 I2V pipeline.
+
+| Workflow | Model | Best for |
+|---|---|---|
+| [`wan22_5B_I2V.json`](workflows/wan22_5B_I2V.json) | TI2V 5B | Fast iteration on RTX 4090 / 5090. ~1-2 min/video. |
+| [`wan22_14B_I2V.json`](workflows/wan22_14B_I2V.json) | I2V A14B | Best quality. ~3-5 min/video, needs ~24 GB VRAM. |
+
+These are Kijai's official example workflows ([source](https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/main/example_workflows)) mirrored here for convenience. The `install-comfyui.sh` script also clones them to `/workspace/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper/example_workflows/` on the pod.
+
+### How to use
+
+1. Deploy a pod with `uv run deploy-pod.py deploy --stack comfyui`
+2. Wait ~10-15 min (install + model download)
+3. Open `https://<podid>-8188.proxy.runpod.net` in your browser
+4. Drag-drop `wan22_5B_I2V.json` onto the ComfyUI canvas
+5. In the `Load Image` node, upload your input image
+6. In the `WanVideoTextEncode` node, write your prompt (describes the **motion**, not the image)
+7. Click **Queue** (top-right) — first run JIT-compiles attention kernels (~1 min extra)
 
 ## Pod setup (manual via RunPod UI)
 
