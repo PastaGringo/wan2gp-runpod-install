@@ -1,0 +1,2 @@
+# Shell scripts must use LF line endings so they run correctly on Linux pods
+*.sh text eol=lf
