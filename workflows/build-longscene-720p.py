@@ -34,8 +34,8 @@ SOURCE = HERE / "wan22_14B_I2V_longscene.json"
 TARGET = HERE / "wan22_14B_I2V_longscene_720p.json"
 
 # New 720p-compatible LoRAs (Kijai Wan22_Lightx2v, separate experts for HIGH/LOW)
-LORA_HIGH = "WanVideo\\Wan22_Lightx2v\\Wan_2_2_I2V_A14B_HIGH_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
-LORA_LOW = "WanVideo\\Wan22_Lightx2v\\Wan_2_2_I2V_A14B_LOW_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
+LORA_HIGH = "WanVideo/Wan22_Lightx2v/Wan_2_2_I2V_A14B_HIGH_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
+LORA_LOW = "WanVideo/Wan22_Lightx2v/Wan_2_2_I2V_A14B_LOW_lightx2v_4step_lora_260412_rank_64_fp16.safetensors"
 
 
 def main() -> None:
@@ -50,13 +50,13 @@ def main() -> None:
         if ntype == "WanVideoLoraSelect" and nid == 56:
             n["widgets_values"][0] = LORA_HIGH
             n["widgets_values"][1] = 1.0  # strength
-            changes.append(f"LoraSelect id=56 (HIGH chain) → {LORA_HIGH.split('\\\\')[-1]} strength=1.0")
+            changes.append(f"LoraSelect id=56 (HIGH chain) → {LORA_HIGH.split('/')[-1]} strength=1.0")
 
         # 2. LoraSelect id=97 → LOW sampler (id=90)
         elif ntype == "WanVideoLoraSelect" and nid == 97:
             n["widgets_values"][0] = LORA_LOW
             n["widgets_values"][1] = 1.0
-            changes.append(f"LoraSelect id=97 (LOW chain) → {LORA_LOW.split('\\\\')[-1]} strength=1.0")
+            changes.append(f"LoraSelect id=97 (LOW chain) → {LORA_LOW.split('/')[-1]} strength=1.0")
 
         # 3. ImageResizeKJv2: target resolution 1280x720 (was 720x720)
         elif ntype == "ImageResizeKJv2":
